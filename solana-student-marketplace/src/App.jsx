@@ -20,6 +20,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+      
 
         {/* Protected marketplace */}
         <Route
