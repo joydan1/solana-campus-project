@@ -1,8 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Dashboard from "/pages/Dashboard.jsx";
-import Marketplace from "/pages/Marketplace.jsx";
-import RegistrationForm from "/components/RegistrationForm.js";
-import ProtectedRoute from "/components/ProtectedRoute.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import Marketplace from "./pages/Marketplace.jsx";
+import RegistrationForm from "./components/RegistrationForm.js";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 function App() {
   return (
