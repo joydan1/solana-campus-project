@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/dashboard.jsx";
 import Marketplace from "./pages/marketplace.jsx";
-import RegistrationForm from "./components/RegistrationForm.js";
+import RegistrationForm from "./components/registrationform.js";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 function App() {
