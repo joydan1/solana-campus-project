@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-import Transactions from "./Transactions";
+import Transactions from "../components/Transactions";
 
 
 export default function Dashboard() {
@@ -85,12 +85,16 @@ export default function Dashboard() {
       fetchItems();
     } catch (err) {
       console.error(err);
-      setMessage("⚠️ Error posting item. Please try again.");
+      setMessage(" Error posting item. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
+if (!form.image) {
+  setMessage(" Please select an image.");
+  setLoading(false);
+  return;
+}
   //  Handle input change
   const handleChange = (e) => {
     const { name, value, files } = e.target;
