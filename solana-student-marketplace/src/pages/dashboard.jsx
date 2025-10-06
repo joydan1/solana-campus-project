@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-import Transactions from "../components/Transactions";
+import Transactions from "./Transactions.jsx";
 
 
 export default function Dashboard() {
