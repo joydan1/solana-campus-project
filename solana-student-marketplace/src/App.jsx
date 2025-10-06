@@ -10,6 +10,7 @@ function App() {
       <Routes>
         {/* Public route */}
         <Route path="/" element={<RegistrationForm />} />
+
         {/* Protected dashboard */}
         <Route
           path="/dashboard"
