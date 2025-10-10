@@ -3,7 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
-import "./app.css";
+import "./App.css";
 import Login from "./components/login.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
