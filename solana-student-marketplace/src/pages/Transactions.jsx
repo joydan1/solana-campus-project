@@ -85,7 +85,7 @@ export default function Transactions({ wallet }) {
       {/* Sales */}
       <div className="bg-[#131313]/70 p-5 rounded-2xl border border-white/10">
         <h3 className="text-lg font-semibold text-[#DC1FFF] mb-3">
-          💼 My Sales
+           My Sales
         </h3>
         {sales.length === 0 ? (
           <p className="text-gray-500 text-sm">No sales yet.</p>

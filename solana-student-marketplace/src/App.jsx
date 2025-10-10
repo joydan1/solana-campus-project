@@ -1,38 +1,38 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/dashboard.jsx";
 import Marketplace from "./pages/marketplace.jsx";
-import RegistrationForm from "./components/registrationform.js";
+import RegistrationForm from "./components/registrationform.jsx";
+import Login from "./components/login.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Public route */}
-        <Route path="/" element={<RegistrationForm />} />
+    <Routes>
+      {/* Public routes */}
+      <Route path="/" element={<RegistrationForm />} />
+      <Route path="/login" element={<Login />} />
 
-        {/* Protected dashboard */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-      
+      {/* Protected routes */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/marketplace"
+        element={
+          <ProtectedRoute>
+            <Marketplace />
+          </ProtectedRoute>
+        }
+      />
 
-        {/* Protected marketplace */}
-        <Route
-          path="/marketplace"
-          element={
-            <ProtectedRoute>
-              <Marketplace />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </Router>
+      {/* Catch-all redirects to home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

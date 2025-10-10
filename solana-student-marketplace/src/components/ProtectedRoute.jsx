@@ -2,23 +2,16 @@ import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 export default function ProtectedRoute({ children }) {
-  const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check if wallet is connected
     const wallet = localStorage.getItem("wallet_address");
-
-    if (wallet) {
-      setAuthenticated(true);
-    } else {
-      setAuthenticated(false);
-    }
-
-    setLoading(false);
+    setIsAuthenticated(wallet && wallet.trim().length > 20);
+    setChecking(false);
   }, []);
 
-  if (loading) {
+  if (checking) {
     return (
       <div className="text-center mt-20 text-gray-400">
         Checking wallet connection...
@@ -26,9 +19,7 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
-  // If not connected, redirect to registration
-  if (!authenticated) return <Navigate to="/" />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  // If connected, show the dashboard
   return children;
 }

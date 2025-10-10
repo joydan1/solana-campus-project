@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { buyProduct } from "../lib/product-buy";
+import { buyProduct } from "../lib/product-buy.jsx";
 import { useNavigate } from "react-router-dom";
+import Navbar from "../components/navbar.jsx";
 
 export default function Marketplace() {
   const [items, setItems] = useState([]);
@@ -31,25 +32,44 @@ export default function Marketplace() {
       .from("listings")
       .select("*")
       .order("created_at", { ascending: false });
+
     if (!error) setItems(data);
     setLoading(false);
   };
 
   // 💰 Handle buy button click
   const handleBuy = async (item) => {
-    if (!walletAddress) {
-      alert("Please connect your Phantom wallet first!");
+    if (!window.solana || !window.solana.isPhantom) {
+      alert("Please install or connect Phantom wallet!");
       return;
     }
 
-    await buyProduct(walletAddress, item.wallet_address, item.price, item.id);
+    try {
+      const provider = window.solana;
+      const { publicKey } = await provider.connect(); // ensure active wallet
+      setWalletAddress(publicKey.toString());
+
+      await buyProduct(
+        publicKey.toBase58(),     // buyer (auto from Phantom)
+        item.wallet_address,      // seller wallet from listing
+        item.price,               // price in SOL
+        item.id                   // listing ID
+      );
+
+      // Refresh UI
+      fetchListings();
+    } catch (err) {
+      console.error("Buy failed:", err);
+      alert("Transaction failed. Please try again.");
+    }
   };
 
   return (
+    
     <div className="min-h-screen bg-[#0A0B0D] text-white p-6">
-      <header className="flex justify-between items-center mb-8">
+      <Navbar className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
-          🛍️ Solana Student Marketplace
+          Solana Student Marketplace
         </h1>
 
         {walletAddress ? (
@@ -67,10 +87,10 @@ export default function Marketplace() {
             }}
             className="px-4 py-2 text-sm rounded bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-80"
           >
-             Connect Wallet
+            Connect Wallet
           </button>
         )}
-      </header>
+      </Navbar>
 
       {loading ? (
         <p className="text-center text-gray-400">Loading items...</p>
@@ -97,15 +117,18 @@ export default function Marketplace() {
                   </span>
                   <span className="text-xs text-gray-500">{item.category}</span>
                 </div>
-               <button
-  onClick={() => handleBuy(item)}
-  disabled={item.sold} // <-- disable if sold
-  className={`w-full mt-4 py-2 rounded font-semibold text-black 
-    ${item.sold ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition'}`}
->
-  {item.sold ? " Sold" : "Buy Now"}
-</button>
 
+                <button
+                  onClick={() => handleBuy(item)}
+                  disabled={item.sold}
+                  className={`w-full mt-4 py-2 rounded font-semibold text-black ${
+                    item.sold
+                      ? "bg-gray-600 cursor-not-allowed"
+                      : "bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
+                  }`}
+                >
+                  {item.sold ? "Sold" : "Buy Now"}
+                </button>
               </div>
             </div>
           ))}

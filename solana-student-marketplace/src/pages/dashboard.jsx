@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import Transactions from "./Transactions.jsx";
-
+import Navbar from "../components/navbar.jsx"; 
 
 export default function Dashboard() {
   const [items, setItems] = useState([]);
@@ -35,66 +35,119 @@ export default function Dashboard() {
     if (!error) setItems(data);
   };
 
-  //  Upload image to Supabase Storage
+  // ----------------------
+  // Upload image function
+  // ----------------------
   const uploadImage = async (file) => {
-    const filePath = `items/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage
-      .from("items")
-      .upload(filePath, file);
+    if (!file) throw new Error("No file provided for upload");
 
-    if (error) throw error;
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("items").getPublicUrl(filePath);
-
-    return publicUrl;
-  };
-
-  //  Handle new listing submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
+    const fileName = `${Date.now()}_${file.name}`;
+    const filePath = `items/${fileName}`;
+    const bucket = "items";
 
     try {
-      const image_url = await uploadImage(form.image);
+      // Upload file with upsert: true (overwrite if exists)
+      const { data, error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, { upsert: true });
 
-      const { error } = await supabase.from("listings").insert([
-        {
-          title: form.title,
-          description: form.description,
-          price: parseFloat(form.price),
-          category: form.category,
-          image_url,
-          wallet_address: wallet,
-        },
-      ]);
+      if (uploadError) throw uploadError;
 
-      if (error) throw error;
+      // Get public URL first
+      let { publicUrl } = supabase.storage.from(bucket).getPublicUrl(filePath);
 
-      setMessage(" Item posted successfully!");
-      setForm({
-        title: "",
-        description: "",
-        price: "",
-        category: "Product",
-        image: null,
-      });
+      // If bucket is private, generate a signed URL valid for 1 hour
+      if (!publicUrl) {
+        const { data: signedData, error: signedError } =
+          await supabase.storage.from(bucket).createSignedUrl(filePath, 3600);
+        if (signedError) throw signedError;
+        publicUrl = signedData.signedUrl;
+      }
 
-      fetchItems();
+      return publicUrl;
     } catch (err) {
-      console.error(err);
-      setMessage(" Error posting item. Please try again.");
-    } finally {
-      setLoading(false);
+      console.error("Image upload failed:", err.message);
+      throw new Error("Image upload failed. Check network and permissions.");
     }
   };
-if (!form.image) {
-  setMessage(" Please select an image.");
-  setLoading(false);
-  return;
-}
+
+  // ----------------------
+  // Handle new listing submission
+  // ----------------------
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setMessage("");
+
+  // Validate image
+  if (!form.image) {
+    setMessage("Please select an image");
+    setLoading(false);
+    return;
+  }
+
+  // Validate wallet address
+  if (!wallet) {
+    setMessage("Wallet address not found. Please connect your wallet.");
+    setLoading(false);
+    return;
+  }
+
+  // Validate other fields
+  if (!form.title || !form.description || !form.price || !form.category) {
+    setMessage("Please fill in all required fields.");
+    setLoading(false);
+    return;
+  }
+
+  try {
+    // Upload image
+    const image_url = await uploadImage(form.image);
+
+    // Prepare insert object
+    const newItem = {
+      title: form.title,
+      description: form.description,
+      price: parseFloat(form.price),
+      category: form.category,
+      image_url,
+      wallet_address: wallet,
+    };
+
+    // Log the data for debugging
+    console.log("Inserting listing:", newItem);
+
+    // Insert into Supabase
+    const { error: insertError } = await supabase
+      .from("listings")
+      .insert([newItem]);
+
+    if (insertError) {
+      console.error("Supabase insert error:", insertError);
+      throw insertError;
+    }
+
+    setMessage("Item posted successfully!");
+    setForm({
+      title: "",
+      description: "",
+      price: "",
+      category: "Product",
+      image: null,
+    });
+
+    fetchItems();
+  } catch (err) {
+    console.error("Error posting item:", err.message);
+    setMessage(
+      `Error posting item: ${err.message}. Check all values and network permissions.`
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
+
   //  Handle input change
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -106,9 +159,9 @@ if (!form.image) {
 
   return (
     <div className="min-h-screen p-6 bg-[#0A0B0D] text-white">
-      <header className="flex justify-between items-center mb-6">
+      <Navbar className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
-           Solana Student Marketplace
+          Solana Student Marketplace
         </h1>
         <button
           onClick={() => {
@@ -119,7 +172,7 @@ if (!form.image) {
         >
           Disconnect
         </button>
-      </header>
+      </Navbar>
 
       {/* New Item Form */}
       <div className="max-w-2xl mx-auto bg-[#131313]/70 p-6 rounded-2xl border border-white/10 mb-8">
@@ -190,24 +243,25 @@ if (!form.image) {
           )}
         </form>
       </div>
+
       {/* Go to Marketplace Button */}
-<div className="text-center mb-8">
-  <button
-    onClick={() => navigate("/marketplace")}
-    className="px-6 py-3 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
-  >
-    🛍️ Go to Marketplace
-  </button>
-</div>
+      <div className="text-center mb-8">
+        <button
+          onClick={() => navigate("/marketplace")}
+          className="px-6 py-3 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
+        >
+          Go to Marketplace
+        </button>
+      </div>
 
-{/* Transactions Section */}
-<div className="mt-16">
-  <h2 className="text-xl font-semibold text-center mb-6 bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
-    My Transactions
-  </h2>
+      {/* Transactions Section */}
+      <div className="mt-16">
+        <h2 className="text-xl font-semibold text-center mb-6 bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
+          My Transactions
+        </h2>
 
-  <Transactions wallet={wallet} />
-</div>
+        <Transactions wallet={wallet} />
+      </div>
 
       {/* Listings Section */}
       <div className="grid md:grid-cols-3 gap-6">
@@ -222,10 +276,10 @@ if (!form.image) {
               className="relative bg-[#131313]/60 border border-white/10 rounded-xl overflow-hidden shadow-lg hover:shadow-[#00FFA3]/20 transition"
             >
               {item.sold && (
-  <span className="text-red-500 font-bold absolute top-2 right-2">
-    SOLD
-  </span>
-)}
+                <span className="text-red-500 font-bold absolute top-2 right-2">
+                  SOLD
+                </span>
+              )}
 
               <img
                 src={item.image_url}

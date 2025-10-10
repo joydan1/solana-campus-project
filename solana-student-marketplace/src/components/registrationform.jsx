@@ -70,11 +70,11 @@ export default function RegistrationForm() {
 
     if (error) throw error;
 
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("student-ids").getPublicUrl(filePath);
+    const { data: publicData } = supabase.storage
+      .from("student-ids")
+      .getPublicUrl(filePath);
 
-    return publicUrl;
+    return publicData.publicUrl; // ✅ fixed destructuring
   };
 
   //  Handle form submission
@@ -84,22 +84,47 @@ export default function RegistrationForm() {
     setMessage("");
 
     try {
+      // ✅ Wallet connection check
+      if (!formData.wallet_address) {
+        setMessage("Please connect your wallet first.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Check if user already exists
+      const { data: existingUser } = await supabase
+        .from("users")
+        .select("*")
+        .eq("wallet_address", formData.wallet_address)
+        .single();
+
+      if (existingUser) {
+        setMessage("Welcome back! Redirecting...");
+        setTimeout(() => navigate("/dashboard"), 1500);
+        setLoading(false);
+        return;
+      }
+
       const student_id_url = await uploadFile(formData.student_id);
 
-      const { error } = await supabase.from("users").insert([
-        {
-          name: formData.name,
-          email: formData.email,
-          school: formData.school,
-          wallet_address: formData.wallet_address,
-          student_id_url,
-          verified: false,
-        },
-      ]);
+      // ✅ Use upsert instead of insert to prevent duplicate (409 conflict)
+      const { error } = await supabase
+        .from("users")
+        .upsert(
+          {
+            name: formData.name,
+            email: formData.email,
+            school: formData.school,
+            wallet_address: formData.wallet_address,
+            student_id_url,
+            verified: false,
+          },
+          { onConflict: ["email", "wallet_address"] }
+        );
 
       if (error) throw error;
 
-      //  Success: show message + redirect
+      // Success
       setMessage(" Registration successful! Redirecting...");
       setTimeout(() => navigate("/dashboard"), 1500);
 
@@ -122,7 +147,9 @@ export default function RegistrationForm() {
     <div className="flex justify-center items-center min-h-[80vh]">
       <form
         onSubmit={handleSubmit}
-        className="max-w-md w-full p-8 rounded-2xl bg-[#131313]/70 border border-white/10 shadow-[0_0_15px_rgba(0,255,163,0.2)] backdrop-blur-lg"
+        className={`max-w-md w-full p-8 rounded-2xl bg-[#131313]/70 border border-white/10 shadow-[0_0_15px_rgba(0,255,163,0.2)] backdrop-blur-lg ${
+          loading ? "opacity-60 pointer-events-none" : ""
+        }`} // ✅ disable during submit
       >
         <h2 className="text-2xl font-bold text-center mb-6 bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
           Student Registration
@@ -167,14 +194,17 @@ export default function RegistrationForm() {
                 onClick={async () => {
                   const address = await connectWallet();
                   if (address) {
-                    setFormData((prev) => ({ ...prev, wallet_address: address }));
+                    setFormData((prev) => ({
+                      ...prev,
+                      wallet_address: address,
+                    }));
                     getWalletBalance(address);
                     localStorage.setItem("wallet_address", address); //  store for route protection
                   }
                 }}
                 className="w-full py-2 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
               >
-                🔗 Connect Wallet
+                Connect Wallet
               </button>
             ) : (
               <div>
@@ -189,7 +219,10 @@ export default function RegistrationForm() {
                   <button
                     type="button"
                     onClick={() => {
-                      setFormData((prev) => ({ ...prev, wallet_address: "" }));
+                      setFormData((prev) => ({
+                        ...prev,
+                        wallet_address: "",
+                      }));
                       localStorage.removeItem("wallet_address"); // clear on disconnect
                     }}
                     className="text-xs text-[#DC1FFF] hover:text-red-400 ml-3"
@@ -200,14 +233,17 @@ export default function RegistrationForm() {
 
                 {balance !== null && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Balance: <span className="text-[#00FFA3]">{balance} SOL</span>
+                    Balance:{" "}
+                    <span className="text-[#00FFA3]">{balance} SOL</span>
                   </p>
                 )}
               </div>
             )}
           </div>
 
-          <label className="text-sm text-gray-400 block">Upload Student ID</label>
+          <label className="text-sm text-gray-400 block">
+            Upload Student ID
+          </label>
           <input
             type="file"
             name="student_id"
@@ -224,6 +260,15 @@ export default function RegistrationForm() {
           >
             {loading ? "Registering..." : "Register"}
           </button>
+<div className="text-center mt-4 text-sm text-gray-400">
+  Already registered?{" "}
+  <a
+    href="/login"
+    className="text-[#00FFA3] hover:text-[#DC1FFF] transition font-medium"
+  >
+    Go to Login
+  </a>
+</div>
 
           {message && (
             <p className="text-center mt-4 text-sm text-gray-300">{message}</p>
