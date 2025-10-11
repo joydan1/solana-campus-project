@@ -2,29 +2,34 @@ import {
   Connection,
   PublicKey,
   clusterApiUrl,
-  LAMPORTS_PER_SOL,
-  Transaction,
-  SystemProgram,
 } from "@solana/web3.js";
 
 // Connect to Solana Devnet
 export const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 
+// Multi-wallet connection
 export async function connectWallet() {
   try {
-    if (!window.solana || !window.solana.isPhantom) {
-      alert("Please install the Phantom wallet to continue.");
+    const provider = window.solana || window.solflare || window.slope;
+    if (!provider) {
+      alert("No Solana wallet detected. Install Phantom, Solflare, or Slope.");
       window.open("https://phantom.app/", "_blank");
-      return;
+      return null;
     }
 
-    const response = await window.solana.connect();
+    const response = await provider.connect();
     const walletAddress = response.publicKey.toString();
 
-    // ✅ Save to localStorage so ProtectedRoute can detect it
-    localStorage.setItem("wallet_address", walletAddress);
+    // Identify wallet type
+    let walletType = "Unknown";
+    if (provider.isPhantom) walletType = "Phantom";
+    else if (provider.isSolflare) walletType = "Solflare";
+    else if (provider.isSlope) walletType = "Slope";
 
-    alert(`Wallet connected: ${walletAddress}`);
+    console.log(`Connected wallet: ${walletAddress} (${walletType})`);
+    localStorage.setItem("wallet_address", walletAddress);
+    localStorage.setItem("wallet_type", walletType);
+
     return walletAddress;
   } catch (error) {
     console.error("Wallet connection failed:", error);
@@ -33,17 +38,32 @@ export async function connectWallet() {
   }
 }
 
+// Disconnect wallet
 export async function disconnectWallet() {
   try {
-    if (window.solana && window.solana.disconnect) {
-      await window.solana.disconnect();
+    const provider = window.solana || window.solflare || window.slope;
+    if (provider && provider.disconnect) {
+      await provider.disconnect();
     }
 
-    // Remove wallet from localStorage
     localStorage.removeItem("wallet_address");
+    localStorage.removeItem("wallet_type");
 
     alert("Wallet disconnected successfully.");
   } catch (error) {
     console.error("Error disconnecting wallet:", error);
+  }
+}
+
+// Fetch balance for a given wallet
+export async function getWalletBalance(address) {
+  try {
+    if (!address) return null;
+    const publicKey = new PublicKey(address);
+    const balanceInLamports = await connection.getBalance(publicKey);
+    return balanceInLamports / 1_000_000_000; // SOL
+  } catch (err) {
+    console.error("Failed to fetch balance:", err);
+    return null;
   }
 }

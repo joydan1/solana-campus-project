@@ -1,8 +1,8 @@
+// src/pages/dashboard.jsx
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-import Transactions from "./Transactions.jsx";
-import Navbar from "../components/navbar.jsx"; 
+import Navbar from "../components/navbar.jsx";
 
 export default function Dashboard() {
   const [items, setItems] = useState([]);
@@ -24,7 +24,7 @@ export default function Dashboard() {
     fetchItems();
   }, []);
 
-  //  Fetch all listings by the logged-in user
+  // Fetch all listings by the logged-in user
   const fetchItems = async () => {
     const { data, error } = await supabase
       .from("listings")
@@ -35,126 +35,90 @@ export default function Dashboard() {
     if (!error) setItems(data);
   };
 
-  // ----------------------
-  // Upload image function
-  // ----------------------
+  // Upload image to Supabase Storage
   const uploadImage = async (file) => {
-    if (!file) throw new Error("No file provided for upload");
+    const filePath = `items/${Date.now()}_${file.name}`;
+    const { data, error } = await supabase.storage
+      .from("items")
+      .upload(filePath, file);
 
-    const fileName = `${Date.now()}_${file.name}`;
-    const filePath = `items/${fileName}`;
-    const bucket = "items";
+    if (error) throw error;
+
+    const { data: publicData } = supabase.storage.from("items").getPublicUrl(filePath);
+return publicData.publicUrl;
+
+  };
+
+  // Handle new listing submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    if (!form.image) {
+      setMessage("Please select an image");
+      setLoading(false);
+      return;
+    }
 
     try {
-      // Upload file with upsert: true (overwrite if exists)
-      const { data, error: uploadError } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, file, { upsert: true });
+      const image_url = await uploadImage(form.image);
 
-      if (uploadError) throw uploadError;
+      const { error } = await supabase.from("listings").insert([
+        {
+          title: form.title,
+          description: form.description,
+          price: parseFloat(form.price),
+          category: form.category,
+          image_url,
+          wallet_address: wallet,
+        },
+      ]);
 
-      // Get public URL first
-      let { publicUrl } = supabase.storage.from(bucket).getPublicUrl(filePath);
+      if (error) throw error;
 
-      // If bucket is private, generate a signed URL valid for 1 hour
-      if (!publicUrl) {
-        const { data: signedData, error: signedError } =
-          await supabase.storage.from(bucket).createSignedUrl(filePath, 3600);
-        if (signedError) throw signedError;
-        publicUrl = signedData.signedUrl;
-      }
+      setMessage("Item posted successfully!");
+      setForm({
+        title: "",
+        description: "",
+        price: "",
+        category: "Product",
+        image: null,
+      });
 
-      return publicUrl;
+      fetchItems();
     } catch (err) {
-      console.error("Image upload failed:", err.message);
-      throw new Error("Image upload failed. Check network and permissions.");
+      console.error(err);
+      setMessage("Error posting item. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ----------------------
-  // Handle new listing submission
-  // ----------------------
-  const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setMessage("");
-
-  // Validate image
-  if (!form.image) {
-    setMessage("Please select an image");
-    setLoading(false);
-    return;
-  }
-
-  // Validate wallet address
-  if (!wallet) {
-    setMessage("Wallet address not found. Please connect your wallet.");
-    setLoading(false);
-    return;
-  }
-
-  // Validate other fields
-  if (!form.title || !form.description || !form.price || !form.category) {
-    setMessage("Please fill in all required fields.");
-    setLoading(false);
-    return;
-  }
-
-  try {
-    // Upload image
-    const image_url = await uploadImage(form.image);
-
-    // Prepare insert object
-    const newItem = {
-      title: form.title,
-      description: form.description,
-      price: parseFloat(form.price),
-      category: form.category,
-      image_url,
-      wallet_address: wallet,
-    };
-
-    // Log the data for debugging
-    console.log("Inserting listing:", newItem);
-
-    // Insert into Supabase
-    const { error: insertError } = await supabase
-      .from("listings")
-      .insert([newItem]);
-
-    if (insertError) {
-      console.error("Supabase insert error:", insertError);
-      throw insertError;
-    }
-
-    setMessage("Item posted successfully!");
-    setForm({
-      title: "",
-      description: "",
-      price: "",
-      category: "Product",
-      image: null,
-    });
-
-    fetchItems();
-  } catch (err) {
-    console.error("Error posting item:", err.message);
-    setMessage(
-      `Error posting item: ${err.message}. Check all values and network permissions.`
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-  //  Handle input change
+  // Handle input change
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     setForm({
       ...form,
       [name]: files ? files[0] : value,
     });
+  };
+
+  // Handle deleting an item
+  const handleDelete = async (itemId) => {
+    const confirm = window.confirm("Are you sure you want to delete this item?");
+    if (!confirm) return;
+
+    try {
+      const { error } = await supabase.from("listings").delete().eq("id", itemId);
+      if (error) throw error;
+
+      setMessage("Item deleted successfully!");
+      fetchItems();
+    } catch (err) {
+      console.error(err);
+      setMessage("Error deleting item. Please try again.");
+    }
   };
 
   return (
@@ -177,7 +141,6 @@ export default function Dashboard() {
       {/* New Item Form */}
       <div className="max-w-2xl mx-auto bg-[#131313]/70 p-6 rounded-2xl border border-white/10 mb-8">
         <h2 className="text-xl font-semibold mb-4">List a New Item or Service</h2>
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"
@@ -209,7 +172,6 @@ export default function Dashboard() {
               required
               className="flex-1 p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#9945FF]"
             />
-
             <select
               name="category"
               value={form.category}
@@ -244,25 +206,6 @@ export default function Dashboard() {
         </form>
       </div>
 
-      {/* Go to Marketplace Button */}
-      <div className="text-center mb-8">
-        <button
-          onClick={() => navigate("/marketplace")}
-          className="px-6 py-3 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
-        >
-          Go to Marketplace
-        </button>
-      </div>
-
-      {/* Transactions Section */}
-      <div className="mt-16">
-        <h2 className="text-xl font-semibold text-center mb-6 bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
-          My Transactions
-        </h2>
-
-        <Transactions wallet={wallet} />
-      </div>
-
       {/* Listings Section */}
       <div className="grid md:grid-cols-3 gap-6">
         {items.length === 0 ? (
@@ -280,7 +223,6 @@ export default function Dashboard() {
                   SOLD
                 </span>
               )}
-
               <img
                 src={item.image_url}
                 alt={item.title}
@@ -295,9 +237,28 @@ export default function Dashboard() {
                   <span className="text-[#00FFA3] font-semibold">
                     {item.price} SOL
                   </span>
-                  <span className="text-xs text-gray-500">
-                    {item.category}
-                  </span>
+                  <span className="text-xs text-gray-500">{item.category}</span>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="flex-1 py-2 rounded bg-red-600 text-white hover:bg-red-700 transition"
+                  >
+                    Delete
+                  </button>
+
+                  <button
+                    disabled={item.sold}
+                    className={`flex-1 py-2 rounded font-semibold text-black ${
+                      item.sold
+                        ? "bg-gray-600 cursor-not-allowed"
+                        : "bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
+                    }`}
+                  >
+                    {item.sold ? "Sold" : "Buy Now"}
+                  </button>
                 </div>
               </div>
             </div>

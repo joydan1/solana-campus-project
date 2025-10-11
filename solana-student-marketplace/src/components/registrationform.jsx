@@ -1,8 +1,7 @@
-import { Connection, clusterApiUrl, PublicKey } from "@solana/web3.js";
-import { connectWallet } from "../lib/wallet"; //  fixed import path
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
+import { connectWallet, getWalletBalance, disconnectWallet } from "../lib/wallet";
 
 export default function RegistrationForm() {
   const [formData, setFormData] = useState({
@@ -19,40 +18,18 @@ export default function RegistrationForm() {
 
   // Automatically check wallet connection on page load
   useEffect(() => {
-    const checkWalletConnection = async () => {
-      if (window.solana && window.solana.isPhantom) {
-        try {
-          const res = await window.solana.connect({ onlyIfTrusted: true });
-          if (res.publicKey) {
-            const address = res.publicKey.toString();
-            setFormData((prev) => ({ ...prev, wallet_address: address }));
-            getWalletBalance(address);
-            localStorage.setItem("wallet_address", address); //  save wallet for route protection
-          }
-        } catch (err) {
-          console.log("No wallet connected:", err);
-        }
-      }
-    };
-
-    checkWalletConnection();
+    const address = localStorage.getItem("wallet_address");
+    if (address) {
+      setFormData((prev) => ({ ...prev, wallet_address: address }));
+      fetchBalance(address);
+    }
   }, []);
 
-  //  Fetch wallet balance
-  const getWalletBalance = async (address) => {
-    try {
-      const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-      const publicKey = new PublicKey(address);
-      const balanceInLamports = await connection.getBalance(publicKey);
-      const balanceInSOL = balanceInLamports / 1_000_000_000;
-      setBalance(balanceInSOL.toFixed(3));
-    } catch (err) {
-      console.error("Failed to fetch balance:", err);
-      setBalance(null);
-    }
+  const fetchBalance = async (address) => {
+    const bal = await getWalletBalance(address);
+    if (bal !== null) setBalance(bal.toFixed(3));
   };
 
-  //  Handle input change
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     setFormData({
@@ -61,37 +38,31 @@ export default function RegistrationForm() {
     });
   };
 
-  // Upload file to Supabase storage
   const uploadFile = async (file) => {
     const filePath = `student-ids/${Date.now()}_${file.name}`;
     const { data, error } = await supabase.storage
       .from("student-ids")
       .upload(filePath, file);
-
     if (error) throw error;
 
     const { data: publicData } = supabase.storage
       .from("student-ids")
       .getPublicUrl(filePath);
-
-    return publicData.publicUrl; // ✅ fixed destructuring
+    return publicData.publicUrl;
   };
 
-  //  Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
 
     try {
-      // ✅ Wallet connection check
       if (!formData.wallet_address) {
         setMessage("Please connect your wallet first.");
         setLoading(false);
         return;
       }
 
-      // ✅ Check if user already exists
       const { data: existingUser } = await supabase
         .from("users")
         .select("*")
@@ -107,7 +78,6 @@ export default function RegistrationForm() {
 
       const student_id_url = await uploadFile(formData.student_id);
 
-      // ✅ Use upsert instead of insert to prevent duplicate (409 conflict)
       const { error } = await supabase
         .from("users")
         .upsert(
@@ -124,8 +94,7 @@ export default function RegistrationForm() {
 
       if (error) throw error;
 
-      // Success
-      setMessage(" Registration successful! Redirecting...");
+      setMessage("Registration successful! Redirecting...");
       setTimeout(() => navigate("/dashboard"), 1500);
 
       setFormData({
@@ -135,12 +104,27 @@ export default function RegistrationForm() {
         wallet_address: "",
         student_id: null,
       });
+      setBalance(null);
     } catch (err) {
       console.error(err);
-      setMessage(" Error registering. Please try again.");
+      setMessage("Error registering. Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleWalletConnect = async () => {
+    const address = await connectWallet();
+    if (address) {
+      setFormData((prev) => ({ ...prev, wallet_address: address }));
+      fetchBalance(address);
+    }
+  };
+
+  const handleWalletDisconnect = async () => {
+    await disconnectWallet();
+    setFormData((prev) => ({ ...prev, wallet_address: "" }));
+    setBalance(null);
   };
 
   return (
@@ -149,7 +133,7 @@ export default function RegistrationForm() {
         onSubmit={handleSubmit}
         className={`max-w-md w-full p-8 rounded-2xl bg-[#131313]/70 border border-white/10 shadow-[0_0_15px_rgba(0,255,163,0.2)] backdrop-blur-lg ${
           loading ? "opacity-60 pointer-events-none" : ""
-        }`} // ✅ disable during submit
+        }`}
       >
         <h2 className="text-2xl font-bold text-center mb-6 bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
           Student Registration
@@ -165,7 +149,6 @@ export default function RegistrationForm() {
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#00FFA3]"
           />
-
           <input
             type="email"
             name="email"
@@ -175,7 +158,6 @@ export default function RegistrationForm() {
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#DC1FFF]"
           />
-
           <input
             type="text"
             name="school"
@@ -186,22 +168,12 @@ export default function RegistrationForm() {
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#9945FF]"
           />
 
-          {/* Wallet connect section */}
+          {/* Wallet Connect Section */}
           <div className="mb-3">
             {!formData.wallet_address ? (
               <button
                 type="button"
-                onClick={async () => {
-                  const address = await connectWallet();
-                  if (address) {
-                    setFormData((prev) => ({
-                      ...prev,
-                      wallet_address: address,
-                    }));
-                    getWalletBalance(address);
-                    localStorage.setItem("wallet_address", address); //  store for route protection
-                  }
-                }}
+                onClick={handleWalletConnect}
                 className="w-full py-2 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-90 transition"
               >
                 Connect Wallet
@@ -218,13 +190,7 @@ export default function RegistrationForm() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        wallet_address: "",
-                      }));
-                      localStorage.removeItem("wallet_address"); // clear on disconnect
-                    }}
+                    onClick={handleWalletDisconnect}
                     className="text-xs text-[#DC1FFF] hover:text-red-400 ml-3"
                   >
                     Disconnect
@@ -233,17 +199,14 @@ export default function RegistrationForm() {
 
                 {balance !== null && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Balance:{" "}
-                    <span className="text-[#00FFA3]">{balance} SOL</span>
+                    Balance: <span className="text-[#00FFA3]">{balance} SOL</span>
                   </p>
                 )}
               </div>
             )}
           </div>
 
-          <label className="text-sm text-gray-400 block">
-            Upload Student ID
-          </label>
+          <label className="text-sm text-gray-400 block">Upload Student ID</label>
           <input
             type="file"
             name="student_id"
@@ -260,19 +223,18 @@ export default function RegistrationForm() {
           >
             {loading ? "Registering..." : "Register"}
           </button>
-<div className="text-center mt-4 text-sm text-gray-400">
-  Already registered?{" "}
-  <a
-    href="/login"
-    className="text-[#00FFA3] hover:text-[#DC1FFF] transition font-medium"
-  >
-    Go to Login
-  </a>
-</div>
 
-          {message && (
-            <p className="text-center mt-4 text-sm text-gray-300">{message}</p>
-          )}
+          <div className="text-center mt-4 text-sm text-gray-400">
+            Already registered?{" "}
+            <a
+              href="/login"
+              className="text-[#00FFA3] hover:text-[#DC1FFF] transition font-medium"
+            >
+              Go to Login
+            </a>
+          </div>
+
+          {message && <p className="text-center mt-4 text-sm text-gray-300">{message}</p>}
         </div>
       </form>
     </div>

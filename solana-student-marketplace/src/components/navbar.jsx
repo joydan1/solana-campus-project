@@ -1,49 +1,49 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { connectWallet, disconnectWallet } from "../lib/wallet";
 
 export default function Navbar() {
+  const [walletAddress, setWalletAddress] = useState("");
   const navigate = useNavigate();
-  const wallet = localStorage.getItem("wallet_address");
 
-  const handleDisconnect = () => {
-    localStorage.removeItem("wallet_address");
-    navigate("/login");
+  useEffect(() => {
+    const wallet = localStorage.getItem("wallet_address");
+    if (wallet) setWalletAddress(wallet);
+  }, []);
+
+  const handleConnect = async () => {
+    const address = await connectWallet();
+    if (address) setWalletAddress(address);
+  };
+
+  const handleDisconnect = async () => {
+    await disconnectWallet();
+    setWalletAddress("");
   };
 
   return (
-    <nav className="bg-[#131313]/80 text-white px-6 py-4 flex justify-between items-center border-b border-white/10 backdrop-blur-md">
-      <h1
-        onClick={() => navigate("/marketplace")}
-        className="text-xl font-bold cursor-pointer bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent"
-      >
-        Solana Student Marketplace
-      </h1>
+    <nav className="flex justify-between items-center p-4 bg-[#131313]/80 backdrop-blur-md rounded-xl mb-6">
+      <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigate("/marketplace")}>
+        <h1 className="text-xl font-bold bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] bg-clip-text text-transparent">
+          Solana Student Marketplace
+        </h1>
+      </div>
 
-      <div className="flex gap-6 items-center">
-        <button
-          onClick={() => navigate("/marketplace")}
-          className="hover:text-[#00FFA3] transition"
-        >
-          Marketplace
-        </button>
+      <div className="flex items-center gap-4">
+        <Link to="/dashboard" className="text-white px-3 py-1 rounded hover:bg-[#00FFA3]/20 transition">Dashboard</Link>
+        <Link to="/marketplace" className="text-white px-3 py-1 rounded hover:bg-[#DC1FFF]/20 transition">Marketplace</Link>
 
-        <button
-          onClick={() => navigate("/dashboard")}
-          className="hover:text-[#DC1FFF] transition"
-        >
-          Dashboard
-        </button>
-
-        {wallet ? (
+        {walletAddress ? (
           <button
             onClick={handleDisconnect}
-            className="text-sm px-4 py-2 rounded bg-[#DC1FFF] hover:bg-[#9945FF] transition"
+            className="px-4 py-2 text-sm rounded bg-[#DC1FFF] hover:bg-[#9945FF] transition"
           >
             Disconnect
           </button>
         ) : (
           <button
-            onClick={() => navigate("/login")}
-            className="text-sm px-4 py-2 rounded bg-[#00FFA3] hover:bg-[#14fba3]/80 transition"
+            onClick={handleConnect}
+            className="px-4 py-2 text-sm rounded bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] hover:opacity-80 transition"
           >
             Connect Wallet
           </button>
