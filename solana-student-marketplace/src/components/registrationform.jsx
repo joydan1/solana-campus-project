@@ -96,7 +96,7 @@ export default function RegistrationForm() {
 
       if (existingUser) {
         setMessage("Welcome back! Redirecting...");
-        setTimeout(() => navigate("/dashboard"), 1000);
+        setTimeout(() => navigate("/login"), 1000);
         return;
       }
 
