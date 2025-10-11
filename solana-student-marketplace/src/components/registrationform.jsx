@@ -123,7 +123,7 @@ export default function RegistrationForm() {
       if (error) throw error;
 
       setMessage("Registration successful! Redirecting...");
-      setTimeout(() => navigate("/dashboard"), 1000);
+      setTimeout(() => navigate("/login"), 1000);
 
       // Reset form
       setFormData({
