@@ -1,62 +1,106 @@
-import {
-  Connection,
-  PublicKey,
-  clusterApiUrl,
-} from "@solana/web3.js";
+import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 
 // Connect to Solana Devnet
 export const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
 
-// Multi-wallet connection
+// Utility: Create a popup wallet selector
+function createWalletPopup() {
+  return new Promise((resolve) => {
+    // Remove any existing popup
+    const existing = document.getElementById("wallet-popup");
+    if (existing) existing.remove();
+
+    // Create popup container
+    const popup = document.createElement("div");
+    popup.id = "wallet-popup";
+    popup.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+
+    // Popup content
+    const content = document.createElement("div");
+    content.style.cssText = `
+      background: #111;
+      color: white;
+      padding: 24px;
+      border-radius: 16px;
+      text-align: center;
+      max-width: 300px;
+      box-shadow: 0 0 20px rgba(0,255,163,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+    `;
+    content.innerHTML = `
+      <h3 style="margin-bottom:16px;font-size:1.2rem;">Select Wallet</h3>
+      <button id="wallet-phantom" style="display:block;width:100%;margin-bottom:10px;padding:10px;background:#00FFA3;color:black;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Phantom</button>
+      <button id="wallet-solflare" style="display:block;width:100%;margin-bottom:10px;padding:10px;background:#DC1FFF;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Solflare</button>
+      <button id="wallet-slope" style="display:block;width:100%;margin-bottom:10px;padding:10px;background:#9945FF;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Slope</button>
+      <button id="wallet-cancel" style="margin-top:10px;font-size:0.85rem;color:#aaa;background:none;border:none;cursor:pointer;">Cancel</button>
+    `;
+
+    popup.appendChild(content);
+    document.body.appendChild(popup);
+
+    // Button handlers
+    document.getElementById("wallet-phantom").onclick = () => {
+      popup.remove();
+      resolve("Phantom");
+    };
+    document.getElementById("wallet-solflare").onclick = () => {
+      popup.remove();
+      resolve("Solflare");
+    };
+    document.getElementById("wallet-slope").onclick = () => {
+      popup.remove();
+      resolve("Slope");
+    };
+    document.getElementById("wallet-cancel").onclick = () => {
+      popup.remove();
+      resolve(null);
+    };
+  });
+}
+
+// Connect wallet (Phantom / Solflare / Slope)
 export async function connectWallet() {
   try {
-    // Prompt user to choose wallet
-    const choice = prompt(
-      "Select wallet to connect:\n Phantom\n  Solflare\n Slope"
-    );
+    const choice = await createWalletPopup();
+    if (!choice) return null;
 
     let provider;
-    if (choice === "1") provider = window.solana;
-    else if (choice === "2") provider = window.solflare;
-    else if (choice === "3" && window.Slope) provider = new window.Slope();
-    else {
-      alert("Invalid choice or wallet not installed.");
-      return null;
-    }
+    let walletAddress = null;
 
-    if (!provider) {
-      alert("No Solana wallet detected. Install Phantom, Solflare, or Slope.");
-      return null;
-    }
-
-    let walletAddress;
-    let walletType = "Unknown";
-
-    // 🔹 Phantom
-    if (provider.isPhantom) {
+    // Phantom
+    if (choice === "Phantom" && window.solana?.isPhantom) {
+      provider = window.solana;
       const response = await provider.connect();
       walletAddress = response.publicKey.toString();
-      walletType = "Phantom";
     }
 
-    // 🔹 Solflare
-    else if (provider.isSolflare) {
+    // Solflare
+    else if (choice === "Solflare" && window.solflare?.isSolflare) {
+      provider = window.solflare;
       const response = await provider.connect();
       walletAddress = response.publicKey.toString();
-      walletType = "Solflare";
     }
 
-    // 🔹 Slope
-    else if (choice === "3" && window.Slope) {
-      const slope = provider;
+    // Slope
+    else if (choice === "Slope" && window.Slope) {
+      const slope = new window.Slope();
       const { data } = await slope.connect();
-      if (data?.publicKey) {
-        walletAddress = data.publicKey;
-        walletType = "Slope";
-      } else {
+      if (data?.publicKey) walletAddress = data.publicKey;
+      else {
         alert("Failed to connect to Slope wallet.");
         return null;
       }
+    } else {
+      alert(`${choice} wallet not detected. Please install it.`);
+      return null;
     }
 
     if (!walletAddress) {
@@ -64,14 +108,14 @@ export async function connectWallet() {
       return null;
     }
 
-    console.log(`Connected wallet: ${walletAddress} (${walletType})`);
+    console.log(`✅ Connected: ${walletAddress} (${choice})`);
     localStorage.setItem("wallet_address", walletAddress);
-    localStorage.setItem("wallet_type", walletType);
+    localStorage.setItem("wallet_type", choice);
 
     return walletAddress;
   } catch (error) {
-    console.error(" Wallet connection failed:", error);
-    alert("Failed to connect wallet. Please try again.");
+    console.error("❌ Wallet connection failed:", error);
+    alert("Failed to connect wallet. Please check console for details.");
     return null;
   }
 }
@@ -81,12 +125,12 @@ export async function disconnectWallet() {
   try {
     const walletType = localStorage.getItem("wallet_type");
 
-    if (walletType === "Phantom" && window.solana?.disconnect)
+    if (walletType === "Phantom" && window.solana?.disconnect) {
       await window.solana.disconnect();
-    else if (walletType === "Solflare" && window.solflare?.disconnect)
+    } else if (walletType === "Solflare" && window.solflare?.disconnect) {
       await window.solflare.disconnect();
-    else if (walletType === "Slope" && window.Slope)
-      await new window.Slope().disconnect();
+    }
+    // Slope doesn’t have a disconnect method; just clear session
 
     localStorage.removeItem("wallet_address");
     localStorage.removeItem("wallet_type");
@@ -97,13 +141,13 @@ export async function disconnectWallet() {
   }
 }
 
-// Fetch balance for a given wallet
+// Get wallet balance
 export async function getWalletBalance(address) {
   try {
     if (!address) return null;
     const publicKey = new PublicKey(address);
     const balanceInLamports = await connection.getBalance(publicKey);
-    return balanceInLamports / 1_000_000_000; // Convert lamports → SOL
+    return balanceInLamports / 1_000_000_000;
   } catch (err) {
     console.error("Failed to fetch balance:", err);
     return null;
