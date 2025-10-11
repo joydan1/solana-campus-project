@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-import { connectWallet, getWalletBalance, disconnectWallet } from "../lib/wallet";
+import { connectWallet, getWalletBalance, disconnectWallet } from "../lib/wallet.js";
 
 export default function RegistrationForm() {
   const [formData, setFormData] = useState({
@@ -26,8 +26,13 @@ export default function RegistrationForm() {
   }, []);
 
   const fetchBalance = async (address) => {
-    const bal = await getWalletBalance(address);
-    if (bal !== null) setBalance(bal.toFixed(3));
+    try {
+      const bal = await getWalletBalance(address);
+      if (bal !== null) setBalance(bal.toFixed(3));
+    } catch (err) {
+      console.error("Failed to fetch balance:", err);
+      setBalance(null);
+    }
   };
 
   const handleChange = (e) => {
@@ -39,16 +44,18 @@ export default function RegistrationForm() {
   };
 
   const uploadFile = async (file) => {
-    const filePath = `student-ids/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage
-      .from("student-ids")
-      .upload(filePath, file);
-    if (error) throw error;
+    if (!file) return null;
+    try {
+      const filePath = `student-ids/${Date.now()}_${file.name}`;
+      const { error } = await supabase.storage.from("student-ids").upload(filePath, file);
+      if (error) throw error;
 
-    const { data: publicData } = supabase.storage
-      .from("student-ids")
-      .getPublicUrl(filePath);
-    return publicData.publicUrl; // ✅ safer return
+      const { data: publicData } = supabase.storage.from("student-ids").getPublicUrl(filePath);
+      return publicData.publicUrl;
+    } catch (err) {
+      console.error("File upload error:", err);
+      throw new Error("Failed to upload file.");
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -63,13 +70,19 @@ export default function RegistrationForm() {
         return;
       }
 
-      // ✅ Optional file validation
-      if (formData.student_id && formData.student_id.size > 2 * 1024 * 1024) {
+      if (!formData.student_id) {
+        setMessage("Please upload your student ID.");
+        setLoading(false);
+        return;
+      }
+
+      if (formData.student_id.size > 2 * 1024 * 1024) {
         setMessage("File too large. Max size 2MB.");
         setLoading(false);
         return;
       }
 
+      // Check if user already exists
       const { data: existingUser } = await supabase
         .from("users")
         .select("*")
@@ -85,25 +98,24 @@ export default function RegistrationForm() {
 
       const student_id_url = await uploadFile(formData.student_id);
 
-      const { error } = await supabase
-        .from("users")
-        .upsert(
-          {
-            name: formData.name,
-            email: formData.email,
-            school: formData.school,
-            wallet_address: formData.wallet_address,
-            student_id_url,
-            verified: false,
-          },
-          { onConflict: ["email", "wallet_address"] }
-        );
+      const { error } = await supabase.from("users").upsert(
+        {
+          name: formData.name,
+          email: formData.email,
+          school: formData.school,
+          wallet_address: formData.wallet_address,
+          student_id_url,
+          verified: false,
+        },
+        { onConflict: ["email", "wallet_address"] }
+      );
 
       if (error) throw error;
 
       setMessage("Registration successful! Redirecting...");
       setTimeout(() => navigate("/dashboard"), 1500);
 
+      // Reset form
       setFormData({
         name: "",
         email: "",
@@ -112,10 +124,9 @@ export default function RegistrationForm() {
         student_id: null,
       });
       setBalance(null);
-      localStorage.removeItem("wallet_address"); //  clear wallet after successful registration
+      localStorage.removeItem("wallet_address");
     } catch (err) {
-      console.error(err);
-      //  More specific error feedback
+      console.error("Registration error:", err);
       if (err.message?.includes("duplicate")) {
         setMessage("This email or wallet is already registered.");
       } else {
@@ -127,19 +138,32 @@ export default function RegistrationForm() {
   };
 
   const handleWalletConnect = async () => {
-    const address = await connectWallet();
-    if (address) {
-      setFormData((prev) => ({ ...prev, wallet_address: address }));
-      fetchBalance(address);
-      localStorage.setItem("wallet_address", address); // ✅ persist wallet
+    try {
+      const address = await connectWallet();
+      console.log("Wallet connected:", address);
+      if (address) {
+        setFormData((prev) => ({ ...prev, wallet_address: address }));
+        fetchBalance(address);
+        localStorage.setItem("wallet_address", address);
+      } else {
+        setMessage("Failed to connect wallet. Make sure your wallet extension is installed.");
+      }
+    } catch (err) {
+      console.error("Wallet connect error:", err);
+      setMessage("Failed to connect wallet. Check console for details.");
     }
   };
 
   const handleWalletDisconnect = async () => {
-    await disconnectWallet();
-    setFormData((prev) => ({ ...prev, wallet_address: "" }));
-    setBalance(null);
-    localStorage.removeItem("wallet_address"); // ✅ clear on disconnect
+    try {
+      await disconnectWallet();
+    } catch (err) {
+      console.error("Wallet disconnect error:", err);
+    } finally {
+      setFormData((prev) => ({ ...prev, wallet_address: "" }));
+      setBalance(null);
+      localStorage.removeItem("wallet_address");
+    }
   };
 
   return (
