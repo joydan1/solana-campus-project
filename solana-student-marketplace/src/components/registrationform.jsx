@@ -16,7 +16,6 @@ export default function RegistrationForm() {
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
-  // Automatically check wallet connection on page load
   useEffect(() => {
     const address = localStorage.getItem("wallet_address");
     if (address) {
@@ -83,16 +82,17 @@ export default function RegistrationForm() {
       }
 
       // Check if user already exists
-      const { data: existingUser } = await supabase
+      const { data: existingUser, error: fetchError } = await supabase
         .from("users")
         .select("*")
         .eq("wallet_address", formData.wallet_address)
         .single();
 
+      if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
+
       if (existingUser) {
         setMessage("Welcome back! Redirecting...");
-        setTimeout(() => navigate("/dashboard"), 1500);
-        setLoading(false);
+        setTimeout(() => navigate("/dashboard"), 1000);
         return;
       }
 
@@ -107,13 +107,13 @@ export default function RegistrationForm() {
           student_id_url,
           verified: false,
         },
-        { onConflict: ["email", "wallet_address"] }
+        { onConflict: ["wallet_address"] } // only wallet_address is unique
       );
 
       if (error) throw error;
 
       setMessage("Registration successful! Redirecting...");
-      setTimeout(() => navigate("/dashboard"), 1500);
+      setTimeout(() => navigate("/dashboard"), 1000);
 
       // Reset form
       setFormData({
@@ -127,11 +127,7 @@ export default function RegistrationForm() {
       localStorage.removeItem("wallet_address");
     } catch (err) {
       console.error("Registration error:", err);
-      if (err.message?.includes("duplicate")) {
-        setMessage("This email or wallet is already registered.");
-      } else {
-        setMessage("Something went wrong. Please try again.");
-      }
+      setMessage(err.message?.includes("duplicate") ? "This wallet is already registered." : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -140,7 +136,6 @@ export default function RegistrationForm() {
   const handleWalletConnect = async () => {
     try {
       const address = await connectWallet();
-      console.log("Wallet connected:", address);
       if (address) {
         setFormData((prev) => ({ ...prev, wallet_address: address }));
         fetchBalance(address);
@@ -207,7 +202,6 @@ export default function RegistrationForm() {
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#9945FF]"
           />
 
-          {/* Wallet Connect Section */}
           <div className="mb-3">
             {!formData.wallet_address ? (
               <button
