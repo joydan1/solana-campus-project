@@ -42,6 +42,7 @@ export default function RegistrationForm() {
     });
   };
 
+  // ✅ Updated to properly get public URL
   const uploadFile = async (file) => {
     if (!file) return null;
     try {
@@ -49,9 +50,9 @@ export default function RegistrationForm() {
       const { error } = await supabase.storage.from("student-ids").upload(filePath, file);
       if (error) throw error;
 
-      const { data: publicData } = supabase.storage.from("student-ids").getPublicUrl(filePath);
-      console.log("Uploaded file URL:", publicData.publicUrl);
-      return publicData.publicUrl;
+      const { publicUrl } = supabase.storage.from("student-ids").getPublicUrl(filePath);
+      console.log("Uploaded file URL:", publicUrl);
+      return publicUrl;
     } catch (err) {
       console.error("File upload error:", err);
       throw new Error("Failed to upload file.");
@@ -82,6 +83,8 @@ export default function RegistrationForm() {
         return;
       }
 
+      console.log("Form Data before registration:", formData);
+
       // Check if user already exists
       const { data: existingUser, error: fetchError } = await supabase
         .from("users")
@@ -101,7 +104,7 @@ export default function RegistrationForm() {
       const student_id_url = await uploadFile(formData.student_id);
       if (!student_id_url) throw new Error("Failed to upload student ID.");
 
-      // Upsert user
+      // ✅ Upsert user
       const { data, error } = await supabase.from("users").upsert(
         {
           name: formData.name,
@@ -111,7 +114,7 @@ export default function RegistrationForm() {
           student_id_url,
           verified: false,
         },
-        { onConflict: ["wallet_address"] } // conflict only on wallet_address
+        { onConflict: ["wallet_address"] }
       );
 
       console.log("Upsert data:", data);
