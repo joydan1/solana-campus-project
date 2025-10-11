@@ -1,3 +1,4 @@
+// src/components/RegistrationForm.jsx
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
@@ -16,6 +17,7 @@ export default function RegistrationForm() {
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
+  // On mount, load wallet from localStorage
   useEffect(() => {
     const address = localStorage.getItem("wallet_address");
     if (address) {
@@ -24,79 +26,104 @@ export default function RegistrationForm() {
     }
   }, []);
 
+  // Fetch wallet balance
   const fetchBalance = async (address) => {
     try {
       const bal = await getWalletBalance(address);
       if (bal !== null) setBalance(bal.toFixed(3));
+      console.log("Wallet balance:", bal);
     } catch (err) {
       console.error("Failed to fetch balance:", err);
       setBalance(null);
     }
   };
 
+  // Handle form changes
   const handleChange = (e) => {
     const { name, value, files } = e.target;
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       [name]: files ? files[0] : value,
-    });
+    }));
+    if (files) console.log("File selected:", files[0]);
   };
 
-  // ✅ Updated to properly get public URL
+  // Upload student ID to Supabase Storage
   const uploadFile = async (file) => {
     if (!file) return null;
     try {
       const filePath = `student-ids/${Date.now()}_${file.name}`;
-      const { error } = await supabase.storage.from("student-ids").upload(filePath, file);
-      if (error) throw error;
+      const { error: uploadError } = await supabase.storage
+        .from("student-ids")
+        .upload(filePath, file);
 
-      const { publicUrl } = supabase.storage.from("student-ids").getPublicUrl(filePath);
-      console.log("Uploaded file URL:", publicUrl);
-      return publicUrl;
+      if (uploadError) throw uploadError;
+
+      const { data, error: urlError } = supabase.storage
+        .from("student-ids")
+        .getPublicUrl(filePath);
+
+      if (urlError) throw urlError;
+
+      console.log("Student ID URL:", data.publicUrl);
+      return data.publicUrl;
     } catch (err) {
       console.error("File upload error:", err);
-      throw new Error("Failed to upload file.");
+      throw new Error("Failed to upload student ID.");
     }
   };
 
+  // Handle wallet connect
+  const handleWalletConnect = async () => {
+    try {
+      const address = await connectWallet();
+      if (address) {
+        setFormData((prev) => ({ ...prev, wallet_address: address }));
+        fetchBalance(address);
+        localStorage.setItem("wallet_address", address);
+      } else {
+        setMessage("Failed to connect wallet. Make sure your wallet is installed.");
+      }
+    } catch (err) {
+      console.error("Wallet connect error:", err);
+      setMessage("Failed to connect wallet. Check console for details.");
+    }
+  };
+
+  // Handle wallet disconnect
+  const handleWalletDisconnect = async () => {
+    try {
+      await disconnectWallet();
+    } catch (err) {
+      console.error("Wallet disconnect error:", err);
+    } finally {
+      setFormData((prev) => ({ ...prev, wallet_address: "" }));
+      setBalance(null);
+      localStorage.removeItem("wallet_address");
+    }
+  };
+
+  // Handle registration submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
 
     try {
+      console.log("Submitting form:", formData);
+
       if (!formData.wallet_address) {
         setMessage("Please connect your wallet first.");
-        setLoading(false);
         return;
       }
 
       if (!formData.student_id) {
         setMessage("Please upload your student ID.");
-        setLoading(false);
         return;
       }
 
       if (formData.student_id.size > 2 * 1024 * 1024) {
         setMessage("File too large. Max size 2MB.");
-        setLoading(false);
-        return;
-      }
-
-      console.log("Form Data before registration:", formData);
-
-      // Check if user already exists
-      const { data: existingUser, error: fetchError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("wallet_address", formData.wallet_address)
-        .single();
-
-      if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
-
-      if (existingUser) {
-        setMessage("Welcome back! Redirecting...");
-        setTimeout(() => navigate("/login"), 1000);
         return;
       }
 
@@ -104,7 +131,7 @@ export default function RegistrationForm() {
       const student_id_url = await uploadFile(formData.student_id);
       if (!student_id_url) throw new Error("Failed to upload student ID.");
 
-      // ✅ Upsert user
+      // Upsert user
       const { data, error } = await supabase.from("users").upsert(
         {
           name: formData.name,
@@ -117,9 +144,7 @@ export default function RegistrationForm() {
         { onConflict: ["wallet_address"] }
       );
 
-      console.log("Upsert data:", data);
-      console.log("Upsert error:", error);
-
+      console.log("Upsert result:", data, error);
       if (error) throw error;
 
       setMessage("Registration successful! Redirecting...");
@@ -137,37 +162,9 @@ export default function RegistrationForm() {
       localStorage.removeItem("wallet_address");
     } catch (err) {
       console.error("Registration error:", err);
-      setMessage(err.message?.includes("duplicate") ? "This wallet is already registered." : "Something went wrong. Check console.");
+      setMessage(err.message || "Something went wrong. Check console.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleWalletConnect = async () => {
-    try {
-      const address = await connectWallet();
-      if (address) {
-        setFormData((prev) => ({ ...prev, wallet_address: address }));
-        fetchBalance(address);
-        localStorage.setItem("wallet_address", address);
-      } else {
-        setMessage("Failed to connect wallet. Make sure your wallet extension is installed.");
-      }
-    } catch (err) {
-      console.error("Wallet connect error:", err);
-      setMessage("Failed to connect wallet. Check console for details.");
-    }
-  };
-
-  const handleWalletDisconnect = async () => {
-    try {
-      await disconnectWallet();
-    } catch (err) {
-      console.error("Wallet disconnect error:", err);
-    } finally {
-      setFormData((prev) => ({ ...prev, wallet_address: "" }));
-      setBalance(null);
-      localStorage.removeItem("wallet_address");
     }
   };
 
@@ -188,8 +185,8 @@ export default function RegistrationForm() {
             type="text"
             name="name"
             placeholder="Full Name"
-            onChange={handleChange}
             value={formData.name}
+            onChange={handleChange}
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#00FFA3]"
           />
@@ -197,8 +194,8 @@ export default function RegistrationForm() {
             type="email"
             name="email"
             placeholder="Email"
-            onChange={handleChange}
             value={formData.email}
+            onChange={handleChange}
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#DC1FFF]"
           />
@@ -206,12 +203,13 @@ export default function RegistrationForm() {
             type="text"
             name="school"
             placeholder="School Name"
-            onChange={handleChange}
             value={formData.school}
+            onChange={handleChange}
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#9945FF]"
           />
 
+          {/* Wallet */}
           <div className="mb-3">
             {!formData.wallet_address ? (
               <button
@@ -249,6 +247,7 @@ export default function RegistrationForm() {
             )}
           </div>
 
+          {/* File */}
           <label className="text-sm text-gray-400 block">Upload Student ID</label>
           <input
             type="file"
@@ -257,6 +256,12 @@ export default function RegistrationForm() {
             onChange={handleChange}
             required
             className="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-[#00FFA3] file:via-[#DC1FFF] file:to-[#9945FF] file:text-black hover:file:opacity-90"
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 mt-4 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] file:text-black hover:file:opacity-90"
           />
 
           <button
