@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar.jsx";
+import { buyProduct } from "../lib/product-buy.jsx"; // ✅ NEW import
 
 export default function Dashboard() {
   const [items, setItems] = useState([]);
@@ -29,7 +30,6 @@ export default function Dashboard() {
     const { data, error } = await supabase
       .from("listings")
       .select("*")
-      .eq("wallet_address", wallet)
       .order("created_at", { ascending: false });
 
     if (!error) setItems(data);
@@ -44,9 +44,10 @@ export default function Dashboard() {
 
     if (error) throw error;
 
-    const { data: publicData } = supabase.storage.from("items").getPublicUrl(filePath);
-return publicData.publicUrl;
-
+    const { data: publicData } = supabase.storage
+      .from("items")
+      .getPublicUrl(filePath);
+    return publicData.publicUrl;
   };
 
   // Handle new listing submission
@@ -118,6 +119,37 @@ return publicData.publicUrl;
     } catch (err) {
       console.error(err);
       setMessage("Error deleting item. Please try again.");
+    }
+  };
+
+  // ✅ Handle product purchase
+  const handleBuyNow = async (item) => {
+    const confirm = window.confirm(
+      `Buy "${item.title}" for ${item.price} SOL?`
+    );
+    if (!confirm) return;
+
+    try {
+      setLoading(true);
+      setMessage("Processing transaction...");
+
+      const buyer = localStorage.getItem("wallet_address");
+      const seller = item.wallet_address;
+      const price = parseFloat(item.price);
+
+      const tx = await buyProduct(buyer, seller, price, item.id);
+
+      if (tx) {
+        setMessage("Purchase successful!");
+        fetchItems();
+      } else {
+        setMessage("Transaction failed.");
+      }
+    } catch (error) {
+      console.error("Buy error:", error);
+      setMessage("Error processing purchase.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -251,6 +283,7 @@ return publicData.publicUrl;
 
                   <button
                     disabled={item.sold}
+                    onClick={() => handleBuyNow(item)} // ✅ new event
                     className={`flex-1 py-2 rounded font-semibold text-black ${
                       item.sold
                         ? "bg-gray-600 cursor-not-allowed"
