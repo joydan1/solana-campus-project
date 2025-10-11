@@ -48,7 +48,7 @@ export default function RegistrationForm() {
     const { data: publicData } = supabase.storage
       .from("student-ids")
       .getPublicUrl(filePath);
-    return publicData.publicUrl;
+    return publicData.publicUrl; // ✅ safer return
   };
 
   const handleSubmit = async (e) => {
@@ -59,6 +59,13 @@ export default function RegistrationForm() {
     try {
       if (!formData.wallet_address) {
         setMessage("Please connect your wallet first.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Optional file validation
+      if (formData.student_id && formData.student_id.size > 2 * 1024 * 1024) {
+        setMessage("File too large. Max size 2MB.");
         setLoading(false);
         return;
       }
@@ -105,9 +112,15 @@ export default function RegistrationForm() {
         student_id: null,
       });
       setBalance(null);
+      localStorage.removeItem("wallet_address"); // ✅ clear wallet after successful registration
     } catch (err) {
       console.error(err);
-      setMessage("Error registering. Please try again.");
+      // ✅ More specific error feedback
+      if (err.message?.includes("duplicate")) {
+        setMessage("This email or wallet is already registered.");
+      } else {
+        setMessage("Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -118,6 +131,7 @@ export default function RegistrationForm() {
     if (address) {
       setFormData((prev) => ({ ...prev, wallet_address: address }));
       fetchBalance(address);
+      localStorage.setItem("wallet_address", address); // ✅ persist wallet
     }
   };
 
@@ -125,6 +139,7 @@ export default function RegistrationForm() {
     await disconnectWallet();
     setFormData((prev) => ({ ...prev, wallet_address: "" }));
     setBalance(null);
+    localStorage.removeItem("wallet_address"); // ✅ clear on disconnect
   };
 
   return (
