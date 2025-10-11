@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-import { connectWallet, getWalletBalance, disconnectWallet } from "../lib/wallet.js";
+import { connectWallet, getWalletBalance, disconnectWallet } from "../lib/wallet";
 
 export default function RegistrationForm() {
   const [formData, setFormData] = useState({
