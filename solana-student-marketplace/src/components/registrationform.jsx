@@ -1,4 +1,3 @@
-// src/components/RegistrationForm.jsx
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +16,6 @@ export default function RegistrationForm() {
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
 
-  // On mount, load wallet from localStorage
   useEffect(() => {
     const address = localStorage.getItem("wallet_address");
     if (address) {
@@ -26,54 +24,24 @@ export default function RegistrationForm() {
     }
   }, []);
 
-  // Fetch wallet balance
   const fetchBalance = async (address) => {
     try {
       const bal = await getWalletBalance(address);
       if (bal !== null) setBalance(bal.toFixed(3));
-      console.log("Wallet balance:", bal);
     } catch (err) {
       console.error("Failed to fetch balance:", err);
       setBalance(null);
     }
   };
 
-  // Handle form changes
   const handleChange = (e) => {
     const { name, value, files } = e.target;
-    setFormData((prev) => ({
-      ...prev,
+    setFormData({
+      ...formData,
       [name]: files ? files[0] : value,
-    }));
-    if (files) console.log("File selected:", files[0]);
+    });
   };
 
-  // Upload student ID to Supabase Storage
-  const uploadFile = async (file) => {
-    if (!file) return null;
-    try {
-      const filePath = `student-ids/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("student-ids")
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data, error: urlError } = supabase.storage
-        .from("student-ids")
-        .getPublicUrl(filePath);
-
-      if (urlError) throw urlError;
-
-      console.log("Student ID URL:", data.publicUrl);
-      return data.publicUrl;
-    } catch (err) {
-      console.error("File upload error:", err);
-      throw new Error("Failed to upload student ID.");
-    }
-  };
-
-  // Handle wallet connect
   const handleWalletConnect = async () => {
     try {
       const address = await connectWallet();
@@ -82,7 +50,7 @@ export default function RegistrationForm() {
         fetchBalance(address);
         localStorage.setItem("wallet_address", address);
       } else {
-        setMessage("Failed to connect wallet. Make sure your wallet is installed.");
+        setMessage("Failed to connect wallet. Make sure your wallet extension is installed.");
       }
     } catch (err) {
       console.error("Wallet connect error:", err);
@@ -90,7 +58,6 @@ export default function RegistrationForm() {
     }
   };
 
-  // Handle wallet disconnect
   const handleWalletDisconnect = async () => {
     try {
       await disconnectWallet();
@@ -103,54 +70,76 @@ export default function RegistrationForm() {
     }
   };
 
-  // Handle registration submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
 
     try {
-      console.log("Submitting form:", formData);
-
       if (!formData.wallet_address) {
         setMessage("Please connect your wallet first.");
+        setLoading(false);
         return;
       }
 
       if (!formData.student_id) {
         setMessage("Please upload your student ID.");
+        setLoading(false);
         return;
       }
 
       if (formData.student_id.size > 2 * 1024 * 1024) {
         setMessage("File too large. Max size 2MB.");
+        setLoading(false);
         return;
       }
 
+      console.log("Registration payload before upload:", {
+        ...formData,
+        student_id_name: formData.student_id.name,
+      });
+
       // Upload student ID
-      const student_id_url = await uploadFile(formData.student_id);
-      if (!student_id_url) throw new Error("Failed to upload student ID.");
+      const file = formData.student_id;
+      const filePath = `student-ids/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("student-ids")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicData, error: urlError } = supabase
+        .storage
+        .from("student-ids")
+        .getPublicUrl(filePath);
+
+      if (urlError) throw urlError;
+
+      const student_id_url = publicData.publicUrl;
+      console.log("Student ID uploaded successfully:", student_id_url);
 
       // Upsert user
-      const { data, error } = await supabase.from("users").upsert(
-        {
-          name: formData.name,
-          email: formData.email,
-          school: formData.school,
-          wallet_address: formData.wallet_address,
-          student_id_url,
-          verified: false,
-        },
-        { onConflict: ["wallet_address"] }
-      );
+      const { data, error } = await supabase
+        .from("users")
+        .upsert(
+          {
+            name: formData.name,
+            email: formData.email,
+            school: formData.school,
+            wallet_address: formData.wallet_address,
+            student_id_url,
+            verified: false,
+          },
+          { onConflict: ["wallet_address"] }
+        );
 
-      console.log("Upsert result:", data, error);
       if (error) throw error;
 
-      setMessage("Registration successful! Redirecting...");
-      setTimeout(() => navigate("/login"), 1000);
+      console.log("Upsert successful:", data);
 
-      // Reset form
+      setMessage("Registration successful! Redirecting...");
+      setTimeout(() => navigate("/login"), 1500);
+
       setFormData({
         name: "",
         email: "",
@@ -160,9 +149,12 @@ export default function RegistrationForm() {
       });
       setBalance(null);
       localStorage.removeItem("wallet_address");
+
     } catch (err) {
-      console.error("Registration error:", err);
-      setMessage(err.message || "Something went wrong. Check console.");
+      console.error("Registration error caught:", err);
+      setMessage(
+        err.message || JSON.stringify(err) || "Something went wrong. Check console."
+      );
     } finally {
       setLoading(false);
     }
@@ -185,8 +177,8 @@ export default function RegistrationForm() {
             type="text"
             name="name"
             placeholder="Full Name"
-            value={formData.name}
             onChange={handleChange}
+            value={formData.name}
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#00FFA3]"
           />
@@ -194,8 +186,8 @@ export default function RegistrationForm() {
             type="email"
             name="email"
             placeholder="Email"
-            value={formData.email}
             onChange={handleChange}
+            value={formData.email}
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#DC1FFF]"
           />
@@ -203,13 +195,12 @@ export default function RegistrationForm() {
             type="text"
             name="school"
             placeholder="School Name"
-            value={formData.school}
             onChange={handleChange}
+            value={formData.school}
             required
             className="w-full p-3 rounded bg-[#0A0B0D]/60 border border-white/10 text-white focus:outline-none focus:border-[#9945FF]"
           />
 
-          {/* Wallet */}
           <div className="mb-3">
             {!formData.wallet_address ? (
               <button
@@ -247,7 +238,6 @@ export default function RegistrationForm() {
             )}
           </div>
 
-          {/* File */}
           <label className="text-sm text-gray-400 block">Upload Student ID</label>
           <input
             type="file"
@@ -256,12 +246,6 @@ export default function RegistrationForm() {
             onChange={handleChange}
             required
             className="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-[#00FFA3] file:via-[#DC1FFF] file:to-[#9945FF] file:text-black hover:file:opacity-90"
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 mt-4 rounded font-semibold text-black bg-gradient-to-r from-[#00FFA3] via-[#DC1FFF] to-[#9945FF] file:text-black hover:file:opacity-90"
           />
 
           <button
