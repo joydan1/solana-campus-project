@@ -8,42 +8,56 @@ import {
 } from "@solana/web3.js";
 import { supabase } from "./supabaseClient";
 
+// Connect to Solana Devnet
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 export async function buyProduct(buyer, seller, price, itemId) {
   try {
-    // --- 1 Ensure Phantom is connected ---
-    const provider = window.solana;
-    if (!provider || !provider.isPhantom) {
-      alert("Phantom wallet not found. Please install or connect it.");
-      return;
+    // --- 1️⃣ Identify connected wallet provider dynamically ---
+    const walletType = localStorage.getItem("wallet_type");
+    let provider = null;
+
+    if (walletType === "Phantom" && window.solana?.isPhantom) provider = window.solana;
+    else if (walletType === "Solflare" && window.solflare?.isSolflare)
+      provider = window.solflare;
+    else if (walletType === "Slope" && window.slope?.isSlope)
+      provider = window.slope;
+    else provider = window.solana || window.solflare || window.slope;
+
+    if (!provider) {
+      alert("No wallet detected. Please connect Phantom, Solflare, or Slope.");
+      return null;
     }
 
-    const buyerPubKey = provider.publicKey; // use Phantom's connected wallet
+    // --- 2️⃣ Ensure connected ---
+    if (!provider.publicKey) {
+      await provider.connect();
+    }
+
+    const buyerPubKey = provider.publicKey;
     const sellerPubKey = new PublicKey(seller);
 
-    // --- 2 Create transaction ---
+    // --- 3️⃣ Build transaction ---
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: buyerPubKey,
         toPubkey: sellerPubKey,
-        lamports: price * LAMPORTS_PER_SOL, // convert SOL to lamports
+        lamports: price * LAMPORTS_PER_SOL,
       })
     );
 
-    // --- 3 Fetch and attach recent blockhash ---
-    const latestBlockhash = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = latestBlockhash.blockhash;
+    const { blockhash } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
     transaction.feePayer = buyerPubKey;
 
-    // --- 4 Let Phantom sign + send ---
+    // --- 4️⃣ Request signing + sending ---
     const signedTx = await provider.signTransaction(transaction);
     const signature = await connection.sendRawTransaction(signedTx.serialize());
     await connection.confirmTransaction(signature, "confirmed");
 
-    console.log(`Transaction confirmed: ${signature}`);
+    console.log(`✅ Transaction confirmed: ${signature}`);
 
-    // --- 5 Update Supabase: mark product as sold ---
+    // --- 5️⃣ Mark as sold in Supabase ---
     const { error: updateError } = await supabase
       .from("listings")
       .update({ sold: true })
@@ -65,12 +79,12 @@ export async function buyProduct(buyer, seller, price, itemId) {
 
     if (logError) throw logError;
 
-    console.log(` Transaction logged successfully for item ${itemId}`);
-    alert(`Purchase successful!\nTransaction Signature:\n${signature}`);
-    return signature;
+    console.log(`Transaction logged for item ${itemId}`);
+    alert(`Purchase successful!\nSignature: ${signature}`);
 
+    return signature;
   } catch (err) {
-    console.error(" Transaction failed:", err);
+    console.error("Transaction failed:", err);
     alert("Transaction failed. Please try again.");
     return null;
   }
