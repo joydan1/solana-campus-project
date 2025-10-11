@@ -112,10 +112,10 @@ export default function RegistrationForm() {
         student_id: null,
       });
       setBalance(null);
-      localStorage.removeItem("wallet_address"); // ✅ clear wallet after successful registration
+      localStorage.removeItem("wallet_address"); //  clear wallet after successful registration
     } catch (err) {
       console.error(err);
-      // ✅ More specific error feedback
+      //  More specific error feedback
       if (err.message?.includes("duplicate")) {
         setMessage("This email or wallet is already registered.");
       } else {
