@@ -50,6 +50,7 @@ export default function RegistrationForm() {
       if (error) throw error;
 
       const { data: publicData } = supabase.storage.from("student-ids").getPublicUrl(filePath);
+      console.log("Uploaded file URL:", publicData.publicUrl);
       return publicData.publicUrl;
     } catch (err) {
       console.error("File upload error:", err);
@@ -96,9 +97,12 @@ export default function RegistrationForm() {
         return;
       }
 
+      // Upload student ID
       const student_id_url = await uploadFile(formData.student_id);
+      if (!student_id_url) throw new Error("Failed to upload student ID.");
 
-      const { error } = await supabase.from("users").upsert(
+      // Upsert user
+      const { data, error } = await supabase.from("users").upsert(
         {
           name: formData.name,
           email: formData.email,
@@ -107,8 +111,11 @@ export default function RegistrationForm() {
           student_id_url,
           verified: false,
         },
-        { onConflict: ["wallet_address"] } // only wallet_address is unique
+        { onConflict: ["wallet_address"] } // conflict only on wallet_address
       );
+
+      console.log("Upsert data:", data);
+      console.log("Upsert error:", error);
 
       if (error) throw error;
 
@@ -127,7 +134,7 @@ export default function RegistrationForm() {
       localStorage.removeItem("wallet_address");
     } catch (err) {
       console.error("Registration error:", err);
-      setMessage(err.message?.includes("duplicate") ? "This wallet is already registered." : "Something went wrong. Please try again.");
+      setMessage(err.message?.includes("duplicate") ? "This wallet is already registered." : "Something went wrong. Check console.");
     } finally {
       setLoading(false);
     }
