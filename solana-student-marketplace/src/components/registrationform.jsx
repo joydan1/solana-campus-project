@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient.js";
+import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { connectWallet, getWalletBalance, disconnectWallet } from "../lib/wallet.js";
 
